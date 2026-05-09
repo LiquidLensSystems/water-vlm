@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Water Quality Monitoring</title>
+
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <style>
+    /* VIEWPORT & THEME VARIABLES */
+    html, body { 
+        margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; 
+    }
+
+    :root { 
+        --bg: #0e1117; 
+        --text: white; 
+        --accent: #00f2ff;
+        --card: rgba(26, 26, 26, 0.9); 
+    }
+    [data-theme="light"] { 
+        --bg: #f8f9fa; 
+        --text: #1c1e21; 
+        --accent: #007bff;
+        --card: rgba(255, 255, 255, 0.95); 
+    }
+
+    body { 
+        background: var(--bg); 
+        color: var(--text); 
+        font-family: 'Inter', sans-serif; 
+        transition: background 0.3s, color 0.3s; 
+    }
+
+    /* SHARED GLASS-CARD STYLE */
+    .glass-card {
+        position: absolute;
+        z-index: 1001;
+        background: var(--card);
+        border-radius: 8px;
+        border-left: 5px solid var(--accent); /* Consistent accent bar */
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        color: var(--text);
+        transition: all 0.3s ease;
+    }
+
+    #dashboard-title {
+        top: 20px;
+        left: 20px;
+        padding: 15px 25px;
+        min-width: 260px;
+        pointer-events: none;
+    }
+
+    #theme-switch {
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+    }
+
+    #map {
+        width: 100vw;
+        height: 100vh;
+    }
+
+    /* Target Plotly's legend to add rounded corners and blur */
+    .js-plotly-plot .legend {
+        border-radius: 8px;
+        backdrop-filter: blur(5px);
+    }
+
+        /* Alert CARD */
+    #vlm-alert {
+        top: 80px; /* Below the theme switch */
+        right: 20px;
+        width: 150px; 
+        max-width: 20vw; /* Ensures it doesn't take more than 25% of the screen width */
+        padding: 15px;
+        display: none; /* Hidden by default */
+        max-height: 40vh;
+        overflow-y: auto;
+        animation: slideIn 0.4s ease-out;
+    }
+
+    @keyframes slideIn {
+        from { transform: translateX(120%); }
+        to { transform: translateX(0); }
+    }
+
+    .vlm-header {
+        font-size: 10px;
+        color: #ff4b4b; /* Alert red */
+        font-weight: 800;
+        letter-spacing: 1px;
+        margin-bottom: 8px;
+    }
+
+    .vlm-text {
+        font-size: 13px;
+        line-height: 1.5;
+        font-style: italic;
+        opacity: 0.9;
+    }
+
+  </style>
+</head>
+<body>
+
+<div id="dashboard-title" class="glass-card">
+    <h1 style="margin:0; font-size: 18px;">Water Quality Monitoring</h1>
+    <div style="font-size: 12px; color: var(--accent); margin-top: 4px; font-weight: 600; text-transform: uppercase;">
+        Satellite Intelligence Platform
+    </div>
+</div>
+
+<div id="theme-switch" class="glass-card" onclick="toggleTheme()">
+    🌓 TOGGLE THEME
+</div>
+
+<div id="vlm-alert" class="glass-card">
+    <div class="vlm-header">ANOMALY DETECTED</div>
+    <div id="vlm-target-name" style="font-weight: bold; font-size: 14px; margin-bottom: 5px;"></div>
+    <div id="vlm-content" class="vlm-text"></div>
+</div>
+
+
+<div id="map"></div>
+
+<script>
+let currentTheme = 'dark';
+let history_lat = [];
+let history_lon = [];
+
+function toggleTheme() {
+    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    const isDark = currentTheme === 'dark';
+    
+    const newLayout = {
+        'geo.landcolor': isDark ? '#1a1a1a' : '#f0f2f6',
+        'geo.oceancolor': isDark ? '#0e1117' : '#ffffff',
+        'geo.countrycolor': isDark ? '#444' : '#d1d5db',
+        'paper_bgcolor': isDark ? '#0e1117' : '#f8f9fa',
+        // Make legend background follow the theme card color
+        'legend.bgcolor': isDark ? 'rgba(26, 26, 26, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+        'legend.font.color': isDark ? 'white' : '#1c1e21',
+        'template': isDark ? 'plotly_dark' : 'plotly_white'
+    };
+
+    Plotly.relayout('map', newLayout);
+    Plotly.restyle('map', {
+        'line.color': [isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)'],
+        'textfont.color': [isDark ? '#00f2ff' : '#000000']
+    }, [0, 1]);
+}
+
+const data = [
+  { // 0: path
+    type: 'scattergeo', name: 'Orbit Path', mode: 'lines',
+    line: {width: 2, color: 'rgba(255,255,255,0.3)', dash: 'dash'},
+    lat: [], lon: []
+  },
+  { // 1: satellite
+    type: 'scattergeo', name: 'Satellite', mode: 'markers+text',
+    text: ["🛰️"], textfont: {size: 24},
+    marker: {size: 1, color: 'rgba(0,0,0,0)'},
+    lat: [], lon: []
+  },
+  { // 2: assets
+    type: 'scattergeo', name: 'Water Bodies', mode: 'markers',
+    marker: {size: 8, symbol: 'diamond', line: {color: 'white', width: 0.5}},
+    lat: [], lon: []
+  },
+  // LEGEND DUMMIES
+  { type: 'scattergeo', mode: 'markers', name: 'High Risk', marker: {color: 'red', symbol: 'diamond'}, lat: [null], lon: [null] },
+  { type: 'scattergeo', mode: 'markers', name: 'Medium Risk', marker: {color: 'orange', symbol: 'diamond'}, lat: [null], lon: [null] },
+  { type: 'scattergeo', mode: 'markers', name: 'Low Risk', marker: {color: 'yellow', symbol: 'diamond'}, lat: [null], lon: [null] },
+  { type: 'scattergeo', mode: 'markers', name: 'Normal', marker: {color: 'lime', symbol: 'diamond'}, lat: [null], lon: [null] },
+  { type: 'scattergeo', mode: 'markers', name: 'No Data', marker: {color: 'gray', symbol: 'diamond'}, lat: [null], lon: [null] }
+];
+
+const layout = {
+  geo: {
+    projection: {type: 'equirectangular'},
+    showland: true, landcolor: '#1a1a1a',
+    showocean: true, oceancolor: '#0e1117',
+    showcountries: true, countrycolor: '#444',
+    showframe: false
+  },
+  margin: {t:0,b:0,l:0,r:0},
+  showlegend: true,
+  legend: {
+    x: 0.98, xanchor: 'right',
+    y: 0.05, yanchor: 'bottom',
+    bgcolor: 'rgba(26, 26, 26, 0.9)', 
+    font: { color: 'white', size: 12 },
+    bordercolor: 'rgba(255, 255, 255, 0.1)',
+    borderwidth: 1,
+    padding: 15
+  }
+};
+
+Plotly.newPlot('map', data, layout, {responsive: true, displayModeBar: false});
+
+window.onresize = function() {
+    Plotly.Plots.resize('map');
+};
+
+setInterval(async () => {
+  try {
+    const [sat, liveState] = await Promise.all([
+      fetch("/sat_pos").then(r => r.json()),
+      fetch("/stream").then(r => r.json())
+    ]);
+
+    if (sat && sat["lon-lat-alt"]) {
+      const coords = sat["lon-lat-alt"];
+      const lon = coords[0]; const lat = coords[1];
+      history_lat.push(lat); history_lon.push(lon);
+      if (history_lat.length > 100) { history_lat.shift(); history_lon.shift(); }
+
+      Plotly.restyle('map', {
+        lat: [history_lat, [lat]],
+        lon: [history_lon, [lon]]
+      }, [0, 1]);
+    }
+
+
+    if (liveState && liveState.assets) {
+      const lats = [], lons = [], colors = [], texts = [];
+      let activeAnomaly = null;
+      liveState.assets.forEach(a => {
+        lats.push(a.lat); lons.push(a.lon);
+        colors.push(a.color || 'gray');
+
+        // Capture the first high/medium risk asset to show in the Alert card
+        if ((a.color === 'red' || a.color === 'orange') && a.status) {
+            activeAnomaly = a;
+        }
+
+        let lastSeenDate = "Pending", lastSeenTime = "Pending";
+        if (a.updated_at) {
+            const parts = a.updated_at.split('T');
+            lastSeenDate = parts[0];
+            lastSeenTime = parts[1].split('.')[0] + " UTC";
+        }
+        texts.push(`<b>${a.name}</b><br>Status: ${a.status}<br>Date: ${lastSeenDate}<br>Time: ${lastSeenTime}`);
+      });
+
+      // UI Update: Show/Hide Alert Card
+      const vlmCard = document.getElementById('vlm-alert');
+      if (liveState && liveState.status) {
+          // Only show for High (red) or Medium (orange) risk
+          if (liveState.color === 'red' || liveState.color === 'orange') {
+              
+              // Update the card content with the full status string
+              document.getElementById('vlm-content').innerText = liveState.status;
+              
+              // Show card and match the accent border to the risk color
+              vlmCard.style.display = 'block';
+              vlmCard.style.borderLeftColor = liveState.color;
+          } else {
+              // Hide for Normal/Idle/Low risk
+              vlmCard.style.display = 'none';
+          }
+      }
+
+      Plotly.restyle('map', {
+        lat: [lats],
+        lon: [lons],
+        'marker.color': [colors], 
+        text: [texts]
+      }, [2]);
+    }
+  } catch (e) { console.error("Sync Error:", e); }
+}, 500);
+
+</script>
+</body>
+</html>

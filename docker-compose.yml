@@ -1,0 +1,65 @@
+services:
+
+  # ── Inference layer ──────────────────────────────────────────────────────────
+  llama-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.llama
+    # Host networking lets this container reach SimSat at localhost:9005
+    # and be reached by the other services at localhost:8080.
+    # Linux only — see README if running on macOS.
+    network_mode: host
+    volumes:
+      - ./models:/models:ro
+    restart: unless-stopped
+    # ── GPU (NVIDIA Container Toolkit required on the host) ───────────────────
+    # Uncomment the block below to enable GPU acceleration (-ngl 99).
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    # Then override the default CMD:
+    # command: >
+    #   llama-server
+    #   -m /models/LFM2.5-VL-450M-Q4_0.gguf
+    #   --mmproj /models/mmproj-LFM2.5-VL-450m-F16.gguf
+    #   -c 8192 --port 8080 -ngl 99
+
+  # ── Flask dashboard ──────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    network_mode: host
+    working_dir: /workspace/mission_control
+    command: python app.py
+    volumes:
+      # Shared state written by collector, read by Flask
+      - state:/workspace/mission_control
+    depends_on:
+      - llama-server
+    restart: unless-stopped
+
+  # ── Data collection / inference loop ─────────────────────────────────────────
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    network_mode: host
+    working_dir: /workspace
+    command: python collect_data.py
+    volumes:
+      # Same named volume so collector writes where Flask reads
+      - state:/workspace/mission_control
+      - ./data:/workspace/data
+    depends_on:
+      - llama-server
+    restart: unless-stopped
+
+volumes:
+  # Ephemeral shared memory between app and collector.
+  # No data is persisted after `docker compose down`.
+  state:
