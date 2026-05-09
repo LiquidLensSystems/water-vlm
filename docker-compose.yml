@@ -61,5 +61,5 @@ services:
 
 volumes:
   # Ephemeral shared memory between app and collector.
-  # No data is persisted after `docker compose down`.
+  # No data is persisted after `docker-compose down`.
   state:

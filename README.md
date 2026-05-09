@@ -36,7 +36,7 @@ SimSat API (:9005)
       ▼
  collect_data.py
   ├─ Tier 1: Spectral indices (NDWI / NDTI / NDCI / NIR)
-  │          no GPU · filters normal passes
+  │          no GPU required · filters normal passes
   │
   └─ Tier 2: LFM2.5-VL-450M via llama-server (:8080)
              triggered only on high / medium risk
@@ -44,7 +44,7 @@ SimSat API (:9005)
       │
       ▼
  shared_state.json  ──►  Flask app (:5000)  ──►  Plotly globe dashboard
-                          risk level · VLM insight · live satellite position
+                         live satellite position · risk level · VLM insight  
 ```
  
 ---
@@ -62,7 +62,7 @@ spectral images are saved per lake per pass
 
 ## Quick Start
 
-### 1 — Start SimSat
+### Step 1: Start SimSat
 
 ```bash
 git clone https://github.com/DPhi-Space/SimSat
@@ -70,9 +70,11 @@ cd SimSat
 docker-compose up
 ```
 
-Leave this running. Dashboard: http://localhost:8000 · API: http://localhost:9005
+Leave this running. 
+- **Dashboard**: http://localhost:8000 
+- **API**: http://localhost:9005
 
-### 2 — Clone this repo and download assets
+### Step 2: Clone this repo and download assets
 
 ```bash
 git clone https://github.com/LiquidLensSystems/water-vlm
@@ -84,7 +86,7 @@ chmod +x setup.sh
 This downloads the LFM2.5-VL model weights (~500 MB) and the Natural Earth
 lakes shapefile into `models/` and `data/` respectively.
 
-### 3 — Start Liquid Lens
+### Step 3: Start Liquid Lens
 
 ```bash
 docker-compose up --build

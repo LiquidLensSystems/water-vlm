@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Liquid Lens — one-time asset download
-# Run once before `docker compose up`.
+# Liquid Lens - one-time asset download
+# Run once before `docker-compose up`.
 # Requires: wget, unzip
 
 set -euo pipefail
