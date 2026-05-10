@@ -86,7 +86,25 @@ chmod +x setup.sh
 This downloads the LFM2.5-VL model weights (~500 MB) and the Natural Earth
 lakes shapefile into `models/` and `data/` respectively.
 
-### Step 3: Start Liquid Lens
+### Step 3: Start llama-server on the host
+ 
+llama-server runs directly on the host so it can access CPU/GPU backends.
+Open a dedicated terminal and leave it running:
+ 
+```bash
+cd llama-b7633
+./llama-server \
+  -m ../models/LFM2.5-VL-450M-Q4_0.gguf \
+  --mmproj ../models/mmproj-LFM2.5-VL-450m-F16.gguf \
+  -c 8192 \
+  --port 8080 \
+  -ngl 99
+```
+ 
+Use `-ngl 0` if you do not have a GPU. Wait for `llama server listening` before
+proceeding.
+
+### Step 4: Start Liquid Lens
 
 ```bash
 docker-compose up --build
@@ -94,17 +112,6 @@ docker-compose up --build
 
 - **Dashboard**: http://localhost:5000
 - **llama-server**: http://localhost:8080
-
----
-
-## GPU Acceleration (optional)
-
-By default the VLM runs on CPU (`-ngl 0`). To enable GPU:
-
-1. Install [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on your host.
-2. In `docker-compose.yml`, uncomment the `deploy:` block under `llama-server`
-   and replace the default `CMD` with the GPU command shown in the comments.
-3. Re-run `docker-compose up --build`.
 
 ---
 
@@ -117,14 +124,14 @@ water-vlm/
 │   └── mission_control/
 │       ├── app.py               # Flask dashboard backend
 │       └── templates/
-│           └── index.html       # Plotly map frontend
+│           └── index.html       # Plotly globe frontend
+├── llama-b7633/                 # llama.cpp b7633 binaries (run on host)
 ├── docs/
 │   └── dashboard.png            # Dashboard screenshot
 ├── models/                      # Downloaded by setup.sh (git-ignored)
-├── data/ne_10m_lakes/           # Downloaded by setup.sh (git-ignored)
+├── data/                        # Shapefile + captured images (git-ignored)
 ├── docker-compose.yml
 ├── Dockerfile.app
-├── Dockerfile.llama
 ├── requirements.txt
 └── setup.sh
 ```
@@ -133,7 +140,10 @@ water-vlm/
 
 ## Notes
 
-- `network_mode: host` is used for all services so they can reach SimSat
-  at `localhost:9005` without extra network configuration. This works on
-  Linux and WSL2. It does **not** work on macOS Docker Desktop.
-- Model weights are git-ignored. Run `setup.sh` before first use.
+- `network_mode: host` is used so all services can reach SimSat at `localhost:9005`
+  and llama-server at `localhost:8080` without extra network configuration.
+  This works on Linux and WSL2. It does **not** work on macOS Docker Desktop.
+- llama-server runs on the host directly to ensure CPU/GPU backends load correctly.
+- Model weights and captured data are git-ignored. Run `setup.sh` before first use.
+- Always use `docker compose down -v` (not just `docker compose down`) when
+  restarting after frontend changes, to ensure the volume is refreshed.

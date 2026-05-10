@@ -283,6 +283,18 @@ def main():
     initialize_mission()
 
     # =========================================================
+    # BANDWIDTH & LATENCY TRACKING (resets on every restart)
+    # =========================================================
+    total_raw_bytes = 0       # Raw bytes that WOULD have been downlinked
+    total_alert_bytes = 0     # Compact alert bytes actually "sent"
+    total_observations = 0    # Total lake passes with valid imagery
+    normal_count = 0          # Passes classified as normal (no downlink)
+    anomaly_count = 0         # Passes classified as red/orange (alert sent)
+    last_tier1_s = 0.0        # Last Tier 1 (spectral math) duration
+    last_tier2_s = None       # Last Tier 2 (VLM) duration — None if not triggered
+    last_pipeline_s = 0.0     # Last end-to-end pipeline duration
+
+    # =========================================================
     # MAIN LOOP
     # =========================================================
 
@@ -338,7 +350,6 @@ def main():
                 distance = haversine_distance(sat_lat, sat_lon, asset["lat"], asset["lon"])
                 
                 if distance > TRIGGER_RADIUS_KM:
-                    # print(f"{name} is {distance:.1f}km away. Waiting for flyover...")
                     continue
                 
                 print(f"\nTARGET IN RANGE: {name} ({distance:.1f}km)")
@@ -354,7 +365,6 @@ def main():
                     f"{safe_time}.png"
                 )
 
-                # img_resp = fetch_image(asset["lat"], asset["lon"], timestamp)
                 print(f"IN RANGE: {name} ({distance:.1f}km). Triggering Live On-Board Camera...")
 
                 # Fetches the image 
@@ -364,9 +374,9 @@ def main():
                         "lat": asset["lat"], "lon": asset["lon"], 
                         "timestamp": timestamp,
                         "spectral_bands": ['green', 'red', 'nir', 'rededge1'],
-                        "size_km": 20.0,      # Capture a wider 20km area so the asset is visible
+                        "size_km": 20.0,
                         "return_type": "array",
-                        "window_seconds": 2592000 # 30-day window to ensure we find a photo
+                        "window_seconds": 2592000
                     }
                 )
                 print(f"img_res.status_code: {img_resp.status_code} | Image hash: {hash(img_resp.content)}")
@@ -385,15 +395,78 @@ def main():
                     data = img_resp.json()
                     print("img_resp.content type: ", type(img_resp.content))
                     print("img_resp.json() type: ", type(img_resp.json()))
+
+                    # -------------------------------------------------
+                    # BANDWIDTH: Raw image size from metadata
+                    # uint16 = 2 bytes per pixel, shape = [bands, H, W]
+                    # -------------------------------------------------
+                    shape = data["image"]["metadata"]["shape"]
+                    raw_bytes = shape[0] * shape[1] * shape[2] * 2
+                    total_raw_bytes += raw_bytes
+                    total_observations += 1
                     
-                    # Tier 1 Analysis
-                    metrics, risk_label, risk_color, should_trigger_vlm, arr, bands  = analyze_water_risk(data)
+                    # -------------------------------------------------
+                    # TIER 1: Spectral analysis (timed)
+                    # -------------------------------------------------
+                    t0 = time.time()
+                    metrics, risk_label, risk_color, should_trigger_vlm, arr, bands = analyze_water_risk(data)
+                    t1 = time.time()
+                    last_tier1_s = round(t1 - t0, 4)
+                    last_tier2_s = None
+                    last_pipeline_s = last_tier1_s
+                    print(f"Metrics: turbidity={metrics['turbidity']:.4f} algae={metrics['algae_index']:.4f} water={metrics['water_score']:.4f} nir={metrics['nir_absorb']:.4f}")
+
                     
-                    # Tier 2 Analysis (Conditional)
+                    # -------------------------------------------------
+                    # TIER 2: VLM (conditional, timed)
+                    # -------------------------------------------------
                     vlm_description = "VLM not required."
                     if should_trigger_vlm and arr is not None:
+                        t2 = time.time()
                         vlm_description = call_liquid_vlm(metrics, risk_label, arr, bands)
-                    
+                        t3 = time.time()
+                        last_tier2_s = round(t3 - t2, 2)
+                        last_pipeline_s = round(t3 - t0, 2)
+
+                    # -------------------------------------------------
+                    # BANDWIDTH: Classification counts
+                    # -------------------------------------------------
+                    if risk_color in ('red', 'orange'):
+                        anomaly_count += 1
+                    else:
+                        normal_count += 1
+
+                    # -------------------------------------------------
+                    # BANDWIDTH: Alert payload size (what we actually "send")
+                    # Only the compact alert fields, not the full state object
+                    # -------------------------------------------------
+                    alert_payload = {
+                        "name": name,
+                        "status": risk_label,
+                        "color": risk_color,
+                        "vlm": vlm_description,
+                        "timestamp": timestamp
+                    }
+                    alert_bytes = len(json.dumps(alert_payload).encode('utf-8'))
+                    if risk_color in ('red', 'orange'):
+                        total_alert_bytes += alert_bytes
+
+                    saved_pct = round(
+                        (1 - total_alert_bytes / total_raw_bytes) * 100, 2
+                    ) if total_raw_bytes > 0 else 0.0
+
+                    print(
+                        f"📊 Bandwidth | Raw: {raw_bytes/1e6:.1f} MB  "
+                        f"Alert: {alert_bytes} B  "
+                        f"Saved: {saved_pct}%  "
+                        f"[{normal_count} normal / {anomaly_count} anomalies]"
+                    )
+                    print(
+                        f"⏱  Latency  | Tier 1: {last_tier1_s*1000:.1f} ms  "
+                        + (f"Tier 2: {last_tier2_s:.2f} s  " if last_tier2_s else "")
+                        + f"Pipeline: {last_pipeline_s:.2f} s"
+                    )
+
                     # Update State for Dashboard
                     current_status = f"TARGET: {name} \nSTATUS: {risk_label} \nVLM INSIGHTS: {vlm_description}"
                     status_color = risk_color
@@ -415,7 +488,23 @@ def main():
                         "timestamp": timestamp,
                         "status": current_status,
                         "color": status_color,
-                        "assets": assets_list_for_frontend 
+                        "assets": assets_list_for_frontend,
+                        # -----------------------------------------
+                        # BANDWIDTH & LATENCY STATS FOR DASHBOARD
+                        # -----------------------------------------
+                        "bandwidth": {
+                            "total_raw_mb": round(total_raw_bytes / 1_000_000, 2),
+                            "total_alert_kb": round(total_alert_bytes / 1_000, 2),
+                            "saved_pct": saved_pct,
+                            "observations": total_observations,
+                            "normal": normal_count,
+                            "anomalies": anomaly_count
+                        },
+                        "latency": {
+                            "last_pipeline_s": last_pipeline_s,
+                            "last_tier1_ms": round(last_tier1_s * 1000, 1),
+                            "last_tier2_s": last_tier2_s  # None if VLM not triggered
+                        }
                     }
 
                     with open("mission_control/shared_state.json", "w") as f:

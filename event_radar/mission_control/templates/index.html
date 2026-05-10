@@ -36,7 +36,7 @@
         z-index: 1001;
         background: var(--card);
         border-radius: 8px;
-        border-left: 5px solid var(--accent); /* Consistent accent bar */
+        border-left: 5px solid var(--accent);
         box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         color: var(--text);
         transition: all 0.3s ease;
@@ -53,7 +53,9 @@
     #theme-switch {
         top: 20px;
         right: 20px;
-        padding: 12px 20px;
+        width: 150px;
+        max-width: 20vw;
+        padding: 12px 15px;
         cursor: pointer;
         font-weight: 600;
         font-size: 14px;
@@ -64,20 +66,75 @@
         height: 100vh;
     }
 
-    /* Target Plotly's legend to add rounded corners and blur */
     .js-plotly-plot .legend {
         border-radius: 8px;
         backdrop-filter: blur(5px);
     }
 
-        /* Alert CARD */
+    /* STATS CARD (bandwidth + latency) */
+    #stats-card {
+        top: 80px;
+        right: 20px;
+        width: 150px;
+        max-width: 20vw;
+        padding: 14px 15px;
+    }
+
+    .stats-section-label {
+        font-size: 9px;
+        color: var(--accent);
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+    }
+
+    .stats-big {
+        font-size: 28px;
+        font-weight: 800;
+        color: white;
+        line-height: 1;
+        margin-bottom: 2px;
+    }
+
+    .stats-detail {
+        font-size: 10px;
+        color: #888;
+        margin-bottom: 10px;
+    }
+
+    .stats-divider {
+        border: none;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        margin: 8px 0;
+    }
+
+    .stats-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 11px;
+        margin-bottom: 3px;
+    }
+
+    .stats-row-label { color: #888; }
+    .stats-row-value { font-weight: 600; color: white; }
+
+    .stats-footnote {
+        font-size: 9px;
+        color: #555;
+        margin-top: 6px;
+        line-height: 1.4;
+    }
+
+    /* VLM ALERT CARD */
     #vlm-alert {
-        top: 80px; /* Below the theme switch */
+        top: 360px; /* Sits below stats-card */
         right: 20px;
         width: 150px; 
-        max-width: 20vw; /* Ensures it doesn't take more than 25% of the screen width */
+        max-width: 20vw;
         padding: 15px;
-        display: none; /* Hidden by default */
+        display: none;
         max-height: 40vh;
         overflow-y: auto;
         animation: slideIn 0.4s ease-out;
@@ -90,7 +147,7 @@
 
     .vlm-header {
         font-size: 10px;
-        color: #ff4b4b; /* Alert red */
+        color: #ff4b4b;
         font-weight: 800;
         letter-spacing: 1px;
         margin-bottom: 8px;
@@ -118,6 +175,43 @@
     🌓 TOGGLE THEME
 </div>
 
+<!-- BANDWIDTH & LATENCY STATS CARD -->
+<div id="stats-card" class="glass-card">
+    <div class="stats-section-label">Bandwidth Saved</div>
+    <div class="stats-big" id="bw-pct">—</div>
+    <div class="stats-detail" id="bw-detail">awaiting first pass...</div>
+
+    <hr class="stats-divider">
+
+    <div class="stats-section-label">Classifications</div>
+    <div class="stats-row">
+        <span class="stats-row-label">🟢 No Alert</span>
+        <span class="stats-row-value" id="bw-normal">—</span>
+    </div>
+    <div class="stats-row">
+        <span class="stats-row-label">🔴 Alerts Sent</span>
+        <span class="stats-row-value" id="bw-anomalies">—</span>
+    </div>
+
+    <hr class="stats-divider">
+
+    <div class="stats-section-label">Pipeline Latency</div>
+    <div class="stats-row">
+        <span class="stats-row-label">Tier 1</span>
+        <span class="stats-row-value" id="lat-tier1">—</span>
+    </div>
+    <div class="stats-row" id="lat-tier2-row" style="display:none;">
+        <span class="stats-row-label">Tier 2 (VLM)</span>
+        <span class="stats-row-value" id="lat-tier2">—</span>
+    </div>
+    <div class="stats-row">
+        <span class="stats-row-label">End-to-end</span>
+        <span class="stats-row-value" id="lat-pipeline">—</span>
+    </div>
+    <div class="stats-footnote">¹ vs traditional ground-based<br>processing</div>
+</div>
+
+<!-- VLM ANOMALY ALERT CARD -->
 <div id="vlm-alert" class="glass-card">
     <div class="vlm-header">ANOMALY DETECTED</div>
     <div id="vlm-target-name" style="font-weight: bold; font-size: 14px; margin-bottom: 5px;"></div>
@@ -142,7 +236,6 @@ function toggleTheme() {
         'geo.oceancolor': isDark ? '#0e1117' : '#ffffff',
         'geo.countrycolor': isDark ? '#444' : '#d1d5db',
         'paper_bgcolor': isDark ? '#0e1117' : '#f8f9fa',
-        // Make legend background follow the theme card color
         'legend.bgcolor': isDark ? 'rgba(26, 26, 26, 0.9)' : 'rgba(255, 255, 255, 0.95)',
         'legend.font.color': isDark ? 'white' : '#1c1e21',
         'template': isDark ? 'plotly_dark' : 'plotly_white'
@@ -186,12 +279,13 @@ const layout = {
     showland: true, landcolor: '#1a1a1a',
     showocean: true, oceancolor: '#0e1117',
     showcountries: true, countrycolor: '#444',
-    showframe: false
+    showframe: false,
+    domain: {x: [0, 0.95], y: [0, 1]}
   },
   margin: {t:0,b:0,l:0,r:0},
   showlegend: true,
   legend: {
-    x: 0.98, xanchor: 'right',
+    x: 0.02, xanchor: 'left',
     y: 0.05, yanchor: 'bottom',
     bgcolor: 'rgba(26, 26, 26, 0.9)', 
     font: { color: 'white', size: 12 },
@@ -226,18 +320,11 @@ setInterval(async () => {
       }, [0, 1]);
     }
 
-
     if (liveState && liveState.assets) {
       const lats = [], lons = [], colors = [], texts = [];
-      let activeAnomaly = null;
       liveState.assets.forEach(a => {
         lats.push(a.lat); lons.push(a.lon);
         colors.push(a.color || 'gray');
-
-        // Capture the first high/medium risk asset to show in the Alert card
-        if ((a.color === 'red' || a.color === 'orange') && a.status) {
-            activeAnomaly = a;
-        }
 
         let lastSeenDate = "Pending", lastSeenTime = "Pending";
         if (a.updated_at) {
@@ -248,31 +335,56 @@ setInterval(async () => {
         texts.push(`<b>${a.name}</b><br>Status: ${a.status}<br>Date: ${lastSeenDate}<br>Time: ${lastSeenTime}`);
       });
 
-      // UI Update: Show/Hide Alert Card
-      const vlmCard = document.getElementById('vlm-alert');
-      if (liveState && liveState.status) {
-          // Only show for High (red) or Medium (orange) risk
-          if (liveState.color === 'red' || liveState.color === 'orange') {
-              
-              // Update the card content with the full status string
-              document.getElementById('vlm-content').innerText = liveState.status;
-              
-              // Show card and match the accent border to the risk color
-              vlmCard.style.display = 'block';
-              vlmCard.style.borderLeftColor = liveState.color;
-          } else {
-              // Hide for Normal/Idle/Low risk
-              vlmCard.style.display = 'none';
-          }
-      }
-
       Plotly.restyle('map', {
-        lat: [lats],
-        lon: [lons],
+        lat: [lats], lon: [lons],
         'marker.color': [colors], 
         text: [texts]
       }, [2]);
     }
+
+    // ── BANDWIDTH & LATENCY CARD ──────────────────────────────
+    if (liveState && liveState.bandwidth) {
+      const bw = liveState.bandwidth;
+
+      document.getElementById('bw-pct').innerText = parseFloat(bw.saved_pct).toFixed(1) + '%';
+      document.getElementById('bw-detail').innerText =
+        bw.total_raw_mb + ' MB raw → ' + bw.total_alert_kb + ' KB sent';
+      // document.getElementById('bw-normal').innerText = bw.normal;
+      // document.getElementById('bw-anomalies').innerText = bw.anomalies;
+      const total = bw.normal + bw.anomalies;
+      const normalPct = total > 0 ? ((bw.normal / total) * 100).toFixed(1) : '0.0';
+      const anomalyPct = total > 0 ? ((bw.anomalies / total) * 100).toFixed(1) : '0.0';
+      document.getElementById('bw-normal').innerText = normalPct + '% (' + bw.normal + ')';
+      document.getElementById('bw-anomalies').innerText = anomalyPct + '% (' + bw.anomalies + ')';
+    }
+
+    if (liveState && liveState.latency) {
+      const lat = liveState.latency;
+
+      document.getElementById('lat-tier1').innerText = lat.last_tier1_ms + ' ms';
+      document.getElementById('lat-pipeline').innerText = lat.last_pipeline_s + ' s';
+
+      const tier2Row = document.getElementById('lat-tier2-row');
+      if (lat.last_tier2_s !== null) {
+        document.getElementById('lat-tier2').innerText = lat.last_tier2_s + ' s';
+        tier2Row.style.display = 'flex';
+      } else {
+        tier2Row.style.display = 'none';
+      }
+    }
+
+    // ── VLM ALERT CARD ───────────────────────────────────────
+    const vlmCard = document.getElementById('vlm-alert');
+    if (liveState && liveState.status) {
+      if (liveState.color === 'red' || liveState.color === 'orange') {
+        document.getElementById('vlm-content').innerText = liveState.status;
+        vlmCard.style.display = 'block';
+        vlmCard.style.borderLeftColor = liveState.color;
+      } else {
+        vlmCard.style.display = 'none';
+      }
+    }
+
   } catch (e) { console.error("Sync Error:", e); }
 }, 500);
 
