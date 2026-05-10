@@ -6,3 +6,5 @@ __pycache__/
 *.pyo
 .env
 llama-b7633/
+*.Zone.Identifier
+*:Zone.Identifier
